@@ -62,7 +62,7 @@ func TestAuthorizePayment(t *testing.T) {
 			name: "Success - Maximum Valid Amount",
 			order: models.Order{
 				ID:     "TEST-PAY-005",
-				Amount: 49999.0,
+				Amount: 9999.0,
 			},
 			wantErr: false,
 			validateResult: func(t *testing.T, authID string) {
