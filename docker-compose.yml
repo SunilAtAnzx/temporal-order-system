@@ -1,0 +1,54 @@
+services:
+  # Temporal server
+  temporal:
+    image: temporalio/auto-setup:1.22.4
+    container_name: temporal
+    ports:
+      - "7233:7233"
+      - "8233:8233"
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgresql
+    depends_on:
+      - postgresql
+
+  # PostgreSQL for Temporal
+  postgresql:
+    image: postgres:13
+    container_name: temporal-postgresql
+    environment:
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_USER: temporal
+    ports:
+      - "5432:5432"
+
+  # Temporal Web UI
+  temporal-ui:
+    image: temporalio/ui:2.21.3
+    container_name: temporal-ui
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    ports:
+      - "8080:8080"
+
+  # WireMock for mock validation service
+  wiremock:
+    image: wiremock/wiremock:3.3.1
+    container_name: wiremock
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./config/wiremock:/home/wiremock
+    command:
+      - --global-response-templating
+      - --verbose
+
+networks:
+  default:
+    name: temporal-network

@@ -1,0 +1,87 @@
+{
+  "mappings": [
+    {
+      "request": {
+        "method": "POST",
+        "urlPath": "/validate",
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": "$.amount"
+          }
+        ]
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "valid": "{{jsonPath request.body '$.amount' > 0 && jsonPath request.body '$.amount' < 10000}}",
+          "message": "{{#if (jsonPath request.body '$.amount' > 0 && jsonPath request.body '$.amount' < 10000)}}Order validated successfully{{else}}Order amount out of valid range{{/if}}"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "transformers": ["response-template"]
+      }
+    },
+    {
+      "priority": 1,
+      "request": {
+        "method": "POST",
+        "urlPath": "/validate",
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": "$[?(@.amount > 10000)]"
+          }
+        ]
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "valid": false,
+          "message": "Order amount exceeds maximum limit"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        }
+      }
+    },
+    {
+      "priority": 2,
+      "request": {
+        "method": "POST",
+        "urlPath": "/validate",
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": "$[?(@.amount <= 0)]"
+          }
+        ]
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "valid": false,
+          "message": "Order amount must be positive"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        }
+      }
+    },
+    {
+      "priority": 3,
+      "request": {
+        "method": "POST",
+        "urlPath": "/validate"
+      },
+      "response": {
+        "status": 200,
+        "jsonBody": {
+          "valid": true,
+          "message": "Order validated successfully"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        }
+      }
+    }
+  ]
+}
