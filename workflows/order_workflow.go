@@ -12,10 +12,9 @@ import (
 )
 
 const (
-	OrderWorkflowName = "OrderWorkflow"
-	SignalCancel      = "cancel"
-	SignalExpedite    = "expedite"
-	QueryState        = "state"
+	SignalCancel   = "cancel"
+	SignalExpedite = "expedite"
+	QueryState     = "state"
 )
 
 // OrderWorkflow is the main workflow for processing orders
@@ -61,65 +60,41 @@ func OrderWorkflow(ctx workflow.Context, order models.Order) error {
 	// Create activities instance
 	var act *activities.Activities
 
-	// Check for signals throughout workflow execution
+	// Signal state flags
 	cancelled := false
 	expedited := false
 
-	// Helper function to check for signals without blocking
-	checkSignals := func() error {
-		selector := workflow.NewSelector(ctx)
+	// Start async signal handler goroutine
+	workflow.Go(ctx, func(gCtx workflow.Context) {
+		selector := workflow.NewSelector(gCtx)
 
-		// Add cancel signal handler
-		selector.AddReceive(cancelChan, func(c workflow.ReceiveChannel, more bool) {
-			var signal string
-			c.Receive(ctx, &signal)
-			cancelled = true
-			state.Status = models.OrderStatusCancelled
-			state.LastUpdated = workflow.Now(ctx)
-			logger.Info("Order cancelled via signal", "order_id", order.ID)
-		})
-
-		// Add expedite signal handler
-		selector.AddReceive(expediteChan, func(c workflow.ReceiveChannel, more bool) {
-			var signal string
-			c.Receive(ctx, &signal)
-			expedited = true
-			state.Status = models.OrderStatusExpedited
-			state.LastUpdated = workflow.Now(ctx)
-			logger.Info("Order expedited via signal", "order_id", order.ID)
-		})
-
-		// Add default case to continue workflow without blocking
-		selector.AddDefault(func() {
-			// Continue with workflow
-		})
-
-		// Check for signals without blocking
-		selector.Select(ctx)
-
-		// If cancelled, return early
-		if cancelled {
-			logger.Info("Order processing cancelled", "order_id", order.ID)
-
-			// Execute rollback activity
-			rollbackCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
-				StartToCloseTimeout: 10 * time.Second,
+		for {
+			selector.AddReceive(cancelChan, func(c workflow.ReceiveChannel, more bool) {
+				var signal string
+				c.Receive(gCtx, &signal)
+				cancelled = true
+				state.Status = models.OrderStatusCancelled
+				state.LastUpdated = workflow.Now(gCtx)
+				logger.Info("Order cancelled via signal", "order_id", order.ID)
 			})
-			err := workflow.ExecuteActivity(rollbackCtx, act.RollbackOrder, order).Get(ctx, nil)
-			if err != nil {
-				logger.Error("Failed to rollback order", "error", err)
+
+			selector.AddReceive(expediteChan, func(c workflow.ReceiveChannel, more bool) {
+				var signal string
+				c.Receive(gCtx, &signal)
+				expedited = true
+				state.Status = models.OrderStatusExpedited
+				state.LastUpdated = workflow.Now(gCtx)
+				logger.Info("Order expedited via signal", "order_id", order.ID)
+			})
+
+			selector.Select(gCtx)
+
+			// Exit loop if cancelled
+			if cancelled {
+				break
 			}
-
-			return fmt.Errorf("order cancelled by user")
 		}
-
-		return nil
-	}
-
-	// Check for signals before starting
-	if err := checkSignals(); err != nil {
-		return err
-	}
+	})
 
 	// Step 1: Validate Order
 	logger.Info("Starting order validation", "order_id", order.ID)
@@ -158,9 +133,14 @@ func OrderWorkflow(ctx workflow.Context, order models.Order) error {
 	state.LastUpdated = workflow.Now(ctx)
 	logger.Info("Order validated successfully", "order_id", order.ID)
 
-	// Check for signals after validation
-	if err := checkSignals(); err != nil {
-		return err
+	// Check if cancelled
+	if cancelled {
+		logger.Info("Order processing cancelled after validation", "order_id", order.ID)
+		rollbackCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+			StartToCloseTimeout: 10 * time.Second,
+		})
+		_ = workflow.ExecuteActivity(rollbackCtx, act.RollbackOrder, order).Get(ctx, nil)
+		return fmt.Errorf("order cancelled by user")
 	}
 
 	// Version 1: Add payment processing
@@ -193,9 +173,14 @@ func OrderWorkflow(ctx workflow.Context, order models.Order) error {
 		logger.Info("Payment processed successfully", "order_id", order.ID, "result", paymentResult)
 	}
 
-	// Check for signals after payment
-	if err := checkSignals(); err != nil {
-		return err
+	// Check if cancelled
+	if cancelled {
+		logger.Info("Order processing cancelled after payment", "order_id", order.ID)
+		rollbackCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+			StartToCloseTimeout: 10 * time.Second,
+		})
+		_ = workflow.ExecuteActivity(rollbackCtx, act.RollbackOrder, order).Get(ctx, nil)
+		return fmt.Errorf("order cancelled by user")
 	}
 
 	// Step 3: Process Order
@@ -228,9 +213,9 @@ func OrderWorkflow(ctx workflow.Context, order models.Order) error {
 	state.Status = models.OrderStatusCompleted
 	state.LastUpdated = workflow.Now(ctx)
 
-	// Check for signals after processing
-	if err := checkSignals(); err != nil {
-		return err
+	// Check if cancelled (though at this point order is already processed)
+	if cancelled {
+		logger.Info("Order cancellation received but order already completed", "order_id", order.ID)
 	}
 
 	// Step 4: Notify Customer
