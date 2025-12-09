@@ -57,8 +57,8 @@ func OrderWorkflow(ctx workflow.Context, order models.Order) error {
 	}
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 
-	// Create activities instance
-	var act *activities.Activities
+	// Create activities instance for method references
+	act := &activities.Activities{}
 
 	// Signal state flags
 	cancelled := false
