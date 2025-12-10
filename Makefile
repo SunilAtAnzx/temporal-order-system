@@ -18,7 +18,7 @@ build:
 	@go build -o bin/starter ./starter/starter.go
 	@echo "Build complete! Binaries in ./bin/"
 
-test:
+test: clean build
 	@echo "Running tests..."
 	@go test ./tests/... -v -cover
 

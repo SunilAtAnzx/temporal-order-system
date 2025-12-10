@@ -90,7 +90,7 @@ func OrderWorkflow(ctx workflow.Context, order models.Order) error {
 			selector.Select(gCtx)
 
 			// Exit loop if cancelled
-			if cancelled {
+			if cancelled || expedited {
 				break
 			}
 		}
@@ -221,6 +221,7 @@ func OrderWorkflow(ctx workflow.Context, order models.Order) error {
 	// Step 4: Notify Customer
 	notificationMessage := "Your order has been processed successfully"
 	if expedited {
+		state.Status = models.OrderStatusExpedited
 		notificationMessage = "Your expedited order has been processed successfully"
 	}
 
