@@ -14,6 +14,12 @@ import (
 	"go.temporal.io/sdk/worker"
 )
 
+// Version information - update this when deploying new versions
+const (
+	WorkerVersion = "1.1.0" // Semantic versioning
+	BuildID       = "1.1.0" // Build ID for worker versioning
+)
+
 const (
 	TaskQueueName = "order-processing-queue"
 )
@@ -67,8 +73,22 @@ func main() {
 	}
 	defer c.Close()
 
-	// Create worker
-	w := worker.New(c, TaskQueueName, worker.Options{})
+	// Get Build ID from environment or use default
+	buildID := os.Getenv("BUILD_ID")
+	if buildID == "" {
+		buildID = BuildID
+	}
+
+	// Create worker with Build ID for worker versioning
+	// Note: Worker versioning requires server-side setup via tctl/tcld commands
+	// See WORKER_VERSIONING.md for complete setup instructions
+	w := worker.New(c, TaskQueueName, worker.Options{
+		// Setting BuildID enables worker versioning
+		// This allows you to deploy new workflow versions without workflow.GetVersion() checks
+		BuildID:                                buildID,
+		MaxConcurrentActivityExecutionSize:     100,
+		MaxConcurrentWorkflowTaskExecutionSize: 50,
+	})
 
 	// Register workflows
 	w.RegisterWorkflow(workflows.OrderWorkflow)
@@ -88,11 +108,14 @@ func main() {
 	w.RegisterActivity(paymentActivities.RefundPayment)
 
 	log.Println("Starting Temporal worker...")
+	log.Printf("Worker Version: %s", WorkerVersion)
+	log.Printf("Build ID: %s", buildID)
 	log.Printf("Temporal address: %s", temporalAddress)
 	log.Printf("Task queue: %s", TaskQueueName)
 	log.Printf("WireMock URL: %s", wiremockURL)
 	log.Println("Registered workflows: OrderWorkflow, PaymentWorkflow")
 	log.Println("Encryption: Enabled")
+	log.Println("Worker Versioning: Enabled (requires server-side task queue configuration)")
 
 	// Start worker
 	err = w.Run(worker.InterruptCh())

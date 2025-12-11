@@ -41,9 +41,6 @@ func OrderWorkflow(ctx workflow.Context, order models.Order) error {
 		return fmt.Errorf("failed to set query handler: %w", err)
 	}
 
-	// Version handling for backward compatibility
-	v := workflow.GetVersion(ctx, "add-payment-processing", workflow.DefaultVersion, 1)
-
 	// Activity options with retry policy
 	activityOptions := workflow.ActivityOptions{
 		StartToCloseTimeout: 30 * time.Second,
@@ -143,35 +140,32 @@ func OrderWorkflow(ctx workflow.Context, order models.Order) error {
 		return fmt.Errorf("order cancelled by user")
 	}
 
-	// Version 1: Add payment processing
-	if v >= 1 {
-		// Step 2: Process Payment (Child Workflow)
-		logger.Info("Starting payment processing", "order_id", order.ID)
+	// Step 2: Process Payment (Child Workflow)
+	logger.Info("Starting payment processing", "order_id", order.ID)
 
-		childWorkflowOptions := workflow.ChildWorkflowOptions{
-			WorkflowID:               fmt.Sprintf("payment-%s", order.ID),
-			WorkflowExecutionTimeout: 2 * time.Minute,
-		}
-		childCtx := workflow.WithChildOptions(ctx, childWorkflowOptions)
-
-		var paymentResult string
-		err = workflow.ExecuteChildWorkflow(childCtx, PaymentWorkflow, order).Get(ctx, &paymentResult)
-		if err != nil {
-			logger.Error("Payment processing failed", "order_id", order.ID, "error", err)
-			state.Status = models.OrderStatusFailed
-			state.LastUpdated = workflow.Now(ctx)
-
-			// Rollback
-			_ = workflow.ExecuteActivity(ctx, act.RollbackOrder, order).Get(ctx, nil)
-			_ = workflow.ExecuteActivity(ctx, act.NotifyCustomer, order, "Payment processing failed").Get(ctx, nil)
-
-			return fmt.Errorf("payment failed: %w", err)
-		}
-
-		state.PaymentDone = true
-		state.LastUpdated = workflow.Now(ctx)
-		logger.Info("Payment processed successfully", "order_id", order.ID, "result", paymentResult)
+	childWorkflowOptions := workflow.ChildWorkflowOptions{
+		WorkflowID:               fmt.Sprintf("payment-%s", order.ID),
+		WorkflowExecutionTimeout: 2 * time.Minute,
 	}
+	childCtx := workflow.WithChildOptions(ctx, childWorkflowOptions)
+
+	var paymentResult string
+	err = workflow.ExecuteChildWorkflow(childCtx, PaymentWorkflow, order).Get(ctx, &paymentResult)
+	if err != nil {
+		logger.Error("Payment processing failed", "order_id", order.ID, "error", err)
+		state.Status = models.OrderStatusFailed
+		state.LastUpdated = workflow.Now(ctx)
+
+		// Rollback
+		_ = workflow.ExecuteActivity(ctx, act.RollbackOrder, order).Get(ctx, nil)
+		_ = workflow.ExecuteActivity(ctx, act.NotifyCustomer, order, "Payment processing failed").Get(ctx, nil)
+
+		return fmt.Errorf("payment failed: %w", err)
+	}
+
+	state.PaymentDone = true
+	state.LastUpdated = workflow.Now(ctx)
+	logger.Info("Payment processed successfully", "order_id", order.ID, "result", paymentResult)
 
 	// Check if cancelled
 	if cancelled {
