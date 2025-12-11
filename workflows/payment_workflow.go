@@ -34,7 +34,7 @@ func PaymentWorkflow(ctx workflow.Context, order models.Order) (string, error) {
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 
 	// Create payment activities instance
-	var paymentAct *activities.PaymentActivities
+	paymentAct := activities.PaymentActivities{}
 
 	// Step 1: Authorize Payment
 	logger.Info("Authorizing payment", "order_id", order.ID)
