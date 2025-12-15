@@ -89,7 +89,7 @@ func (a *Activities) ProcessOrder(ctx context.Context, order models.Order) error
 	logger := activity.GetLogger(ctx)
 	logger.Info("Processing order", "order_id", order.ID)
 
-	// Simulate processing time
+	// Simulate processing time with context-aware wait
 	select {
 	case <-time.After(2 * time.Second):
 		// Processing complete
@@ -113,8 +113,14 @@ func (a *Activities) ProcessOrder(ctx context.Context, order models.Order) error
 		return fmt.Errorf("order amount mismatch: expected %.2f, got %.2f", calculatedTotal, order.Amount)
 	}
 
-	// Simulate inventory check
-	time.Sleep(500 * time.Millisecond)
+	// Simulate inventory check with context-aware wait
+	select {
+	case <-time.After(500 * time.Millisecond):
+		// Inventory check complete
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
 	activity.RecordHeartbeat(ctx, "inventory checked")
 
 	logger.Info("Order processed successfully", "order_id", order.ID)
@@ -126,8 +132,13 @@ func (a *Activities) NotifyCustomer(ctx context.Context, order models.Order, mes
 	logger := activity.GetLogger(ctx)
 	logger.Info("Notifying customer", "order_id", order.ID, "message", message)
 
-	// Simulate notification delay
-	time.Sleep(500 * time.Millisecond)
+	// Simulate notification delay with context-aware wait
+	select {
+	case <-time.After(500 * time.Millisecond):
+		// Notification sent
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 
 	logger.Info("Customer notified successfully", "order_id", order.ID)
 	return nil
@@ -138,8 +149,13 @@ func (a *Activities) RollbackOrder(ctx context.Context, order models.Order) erro
 	logger := activity.GetLogger(ctx)
 	logger.Info("Rolling back order", "order_id", order.ID)
 
-	// Simulate rollback operations
-	time.Sleep(1 * time.Second)
+	// Simulate rollback operations with context-aware wait
+	select {
+	case <-time.After(1 * time.Second):
+		// Rollback complete
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 
 	logger.Info("Order rolled back successfully", "order_id", order.ID)
 	return nil

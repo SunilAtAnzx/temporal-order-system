@@ -7,7 +7,6 @@ import (
 
 	"temporal-order-system/models"
 
-	"github.com/google/uuid"
 	"go.temporal.io/sdk/activity"
 )
 
@@ -24,8 +23,14 @@ func (p *PaymentActivities) AuthorizePayment(ctx context.Context, order models.O
 	logger := activity.GetLogger(ctx)
 	logger.Info("Authorizing payment", "order_id", order.ID, "amount", order.Amount)
 
-	// Simulate payment authorization processing
-	time.Sleep(1 * time.Second)
+	// Simulate payment authorization processing with context-aware wait
+	select {
+	case <-time.After(1 * time.Second):
+		// Processing complete
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+
 	activity.RecordHeartbeat(ctx, "authorizing payment")
 
 	// Simulate payment validation
@@ -37,8 +42,9 @@ func (p *PaymentActivities) AuthorizePayment(ctx context.Context, order models.O
 		return "", fmt.Errorf("payment amount exceeds authorization limit")
 	}
 
-	// Generate authorization ID
-	authorizationID := fmt.Sprintf("AUTH-%s", uuid.New().String()[:8])
+	// Generate deterministic authorization ID based on activity info
+	info := activity.GetInfo(ctx)
+	authorizationID := fmt.Sprintf("AUTH-%s-%d", order.ID[:8], info.Attempt)
 
 	logger.Info("Payment authorized successfully", "order_id", order.ID, "authorization_id", authorizationID)
 	return authorizationID, nil
@@ -49,8 +55,14 @@ func (p *PaymentActivities) CapturePayment(ctx context.Context, order models.Ord
 	logger := activity.GetLogger(ctx)
 	logger.Info("Capturing payment", "order_id", order.ID, "authorization_id", authorizationID)
 
-	// Simulate payment capture processing
-	time.Sleep(1500 * time.Millisecond)
+	// Simulate payment capture processing with context-aware wait
+	select {
+	case <-time.After(1500 * time.Millisecond):
+		// Processing complete
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+
 	activity.RecordHeartbeat(ctx, "capturing payment")
 
 	// Validate authorization ID
@@ -58,8 +70,9 @@ func (p *PaymentActivities) CapturePayment(ctx context.Context, order models.Ord
 		return "", fmt.Errorf("invalid authorization ID")
 	}
 
-	// Generate transaction ID
-	transactionID := fmt.Sprintf("TXN-%s", uuid.New().String()[:8])
+	// Generate deterministic transaction ID based on activity info
+	info := activity.GetInfo(ctx)
+	transactionID := fmt.Sprintf("TXN-%s-%d", order.ID[:8], info.Attempt)
 
 	logger.Info("Payment captured successfully", "order_id", order.ID, "transaction_id", transactionID)
 	return transactionID, nil
@@ -70,8 +83,13 @@ func (p *PaymentActivities) VoidAuthorization(ctx context.Context, authorization
 	logger := activity.GetLogger(ctx)
 	logger.Info("Voiding authorization", "authorization_id", authorizationID)
 
-	// Simulate void processing
-	time.Sleep(500 * time.Millisecond)
+	// Simulate void processing with context-aware wait
+	select {
+	case <-time.After(500 * time.Millisecond):
+		// Processing complete
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 
 	logger.Info("Authorization voided successfully", "authorization_id", authorizationID)
 	return nil
@@ -82,12 +100,24 @@ func (p *PaymentActivities) RefundPayment(ctx context.Context, transactionID str
 	logger := activity.GetLogger(ctx)
 	logger.Info("Refunding payment", "transaction_id", transactionID, "amount", amount)
 
-	// Simulate refund processing
-	time.Sleep(1 * time.Second)
+	// Simulate refund processing with context-aware wait
+	select {
+	case <-time.After(1 * time.Second):
+		// Processing complete
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+
 	activity.RecordHeartbeat(ctx, "processing refund")
 
-	// Generate refund ID
-	refundID := fmt.Sprintf("REFUND-%s", uuid.New().String()[:8])
+	// Generate deterministic refund ID based on activity info
+	info := activity.GetInfo(ctx)
+	// Use a substring of transaction ID safely (minimum of 8 chars or full length)
+	txnIDPart := transactionID
+	if len(transactionID) > 12 {
+		txnIDPart = transactionID[4:12] // Skip "TXN-" prefix and take next 8 chars
+	}
+	refundID := fmt.Sprintf("REFUND-%s-%d", txnIDPart, info.Attempt)
 
 	logger.Info("Refund processed successfully", "transaction_id", transactionID, "refund_id", refundID)
 	return refundID, nil
